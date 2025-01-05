@@ -5,7 +5,7 @@ from torch_geometric.nn.conv import GatedGraphConv
 from transformers import AutoModel, AutoTokenizer
 from transformers import RobertaTokenizer, RobertaConfig, RobertaModel
 
-torch.manual_seed(2020)
+th.manual_seed(2020)
 
 
 def get_conv_mp_out_size(in_size, last_layer, mps):
@@ -23,14 +23,22 @@ def init_weights(m):
     if type(m) == nn.Linear or type(m) == nn.Conv1d:
         torch.nn.init.xavier_uniform_(m.weight)
 
+
 def encode_input(text, tokenizer):
     max_length = 512
-    input = tokenizer(text, max_length=max_length, truncation=True, padding='max_length', return_tensors='pt')
-#     print(input.keys())
+    input = tokenizer(
+        text,
+        max_length=max_length,
+        truncation=True,
+        padding="max_length",
+        return_tensors="pt",
+    )
+    #     print(input.keys())
     return input.input_ids, input.attention_mask
 
+
 class CodeBertClassifier(th.nn.Module):
-    def __init__(self, pretrained_model='roberta_base', nb_class=2):
+    def __init__(self, pretrained_model="roberta_base", nb_class=2):
         super(CodeBertClassifier, self).__init__()
         self.nb_class = nb_class
         self.tokenizer = RobertaTokenizer.from_pretrained("microsoft/codebert-base")
@@ -43,9 +51,12 @@ class CodeBertClassifier(th.nn.Module):
         cls_logit = self.classifier(cls_feats)
         return cls_logit
 
+
 class Conv(nn.Module):
 
-    def __init__(self, conv1d_1, conv1d_2, maxpool1d_1, maxpool1d_2, fc_1_size, fc_2_size):
+    def __init__(
+        self, conv1d_1, conv1d_2, maxpool1d_1, maxpool1d_2, fc_1_size, fc_2_size
+    ):
         super(Conv, self).__init__()
         self.conv1d_1_args = conv1d_1
         self.conv1d_1 = nn.Conv1d(**conv1d_1)
@@ -95,9 +106,11 @@ class Net(nn.Module):
     def __init__(self, gated_graph_conv_args, conv_args, emb_size, device):
         super(Net, self).__init__()
         self.ggc = GatedGraphConv(**gated_graph_conv_args).to(device)
-        self.conv = Conv(**conv_args,
-                         fc_1_size=gated_graph_conv_args["out_channels"] + emb_size,
-                         fc_2_size=gated_graph_conv_args["out_channels"]).to(device)
+        self.conv = Conv(
+            **conv_args,
+            fc_1_size=gated_graph_conv_args["out_channels"] + emb_size,
+            fc_2_size=gated_graph_conv_args["out_channels"]
+        ).to(device)
         # self.conv.apply(init_weights)
 
     def forward(self, data):
