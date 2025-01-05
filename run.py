@@ -5,12 +5,18 @@ from argparse import ArgumentParser
 import configs
 import utils.data as data
 import utils.process as process
-import utils.functions.cpg as cpg
+from utils.functions.cpg_util import parse_to_nodes
 import torch
 import torch.nn.functional as F
 from utils.data.datamanager import loads, train_val_test_split
 from models.LMGNN import BertGGCN
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    confusion_matrix,
+)
 import matplotlib.pyplot as plt
 from test import test
 
@@ -20,15 +26,16 @@ DEVICE = FILES.get_device()
 
 
 def select(dataset):
-    result = dataset.loc[dataset['project'] == "FFmpeg"]
+    result = dataset.loc[dataset["project"] == "FFmpeg"]
     len_filter = result.func.str.len() < 1200
     result = result.loc[len_filter]
-    #print(len(result))
-    #result = result.iloc[11001:]
-    #print(len(result))
+    # print(len(result))
+    # result = result.iloc[11001:]
+    # print(len(result))
     result = result.head(200)
 
     return result
+
 
 def CPG_generator():
     """
@@ -51,12 +58,16 @@ def CPG_generator():
     # Create CPG binary files
     for s, slice in slices:
         data.to_files(slice, PATHS.joern)
-        cpg_file = process.joern_parse(context.joern_cli_dir, PATHS.joern, PATHS.cpg, f"{s}_{FILES.cpg}")
+        cpg_file = process.joern_parse(
+            context.joern_cli_dir, PATHS.joern, PATHS.cpg, f"{s}_{FILES.cpg}"
+        )
         cpg_files.append(cpg_file)
         print(f"Dataset {s} to cpg.")
         shutil.rmtree(PATHS.joern)
     # Create CPG with graphs json files
-    json_files = process.joern_create(context.joern_cli_dir, PATHS.cpg, PATHS.cpg, cpg_files)
+    json_files = process.joern_create(
+        context.joern_cli_dir, PATHS.cpg, PATHS.cpg, cpg_files
+    )
     for (s, slice), json_file in zip(slices, json_files):
         graphs = process.json_process(PATHS.cpg, json_file)
         if graphs is None:
@@ -68,6 +79,7 @@ def CPG_generator():
         data.write(dataset, PATHS.cpg, f"{s}_{FILES.cpg}.pkl")
         del dataset
         gc.collect()
+
 
 def Embed_generator():
     """
@@ -84,14 +96,24 @@ def Embed_generator():
         tokens_dataset = data.tokenize(cpg_dataset)
         data.write(tokens_dataset, PATHS.tokens, f"{file_name}_{FILES.tokens}")
 
-        cpg_dataset["nodes"] = cpg_dataset.apply(lambda row: cpg.parse_to_nodes(row.cpg, context.nodes_dim), axis=1)
-        cpg_dataset["input"] = cpg_dataset.apply(lambda row: process.nodes_to_input(row.nodes, row.target, context.nodes_dim,
-                                                                            context.edge_type), axis=1)
+        cpg_dataset["nodes"] = cpg_dataset.apply(
+            lambda row: parse_to_nodes(row.cpg, context.nodes_dim), axis=1
+        )
+        cpg_dataset["input"] = cpg_dataset.apply(
+            lambda row: process.nodes_to_input(
+                row.nodes, row.target, context.nodes_dim, context.edge_type
+            ),
+            axis=1,
+        )
         data.drop(cpg_dataset, ["nodes"])
         print(f"Saving input dataset {file_name} with size {len(cpg_dataset)}.")
         # write(cpg_dataset[["input", "target"]], PATHS.input, f"{file_name}_{FILES.input}")
         # write(cpg_dataset[["input", "target","func"]], PATHS.input, f"{file_name}_{FILES.input}")
-        data.write(cpg_dataset[["input", "target", "func"]], PATHS.input, f"{file_name}_{FILES.input}")
+        data.write(
+            cpg_dataset[["input", "target", "func"]],
+            PATHS.input,
+            f"{file_name}_{FILES.input}",
+        )
 
         del cpg_dataset
         gc.collect()
@@ -123,10 +145,17 @@ def train(model, device, train_loader, optimizer, epoch):
         loss.backward()
         optimizer.step()
         if (batch_idx + 1) % 100 == 0:
-            print('Train Epoch: {} [{}/{} ({:.2f}%)]/t Loss: {:.6f}'.format(epoch, (batch_idx + 1) * len(batch),
-                                                                            len(train_loader.dataset),
-                                                                            100. * batch_idx / len(train_loader),
-                                                                            loss.item()))
+            print(
+                "Train Epoch: {} [{}/{} ({:.2f}%)]/t Loss: {:.6f}".format(
+                    epoch,
+                    (batch_idx + 1) * len(batch),
+                    len(train_loader.dataset),
+                    100.0 * batch_idx / len(train_loader),
+                    loss.item(),
+                )
+            )
+
+
 def validate(model, device, test_loader):
     """
     Validates the model using the provided test data.
@@ -164,23 +193,41 @@ def validate(model, device, test_loader):
 
     plt.figure(figsize=(8, 6))
     # sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=['benign', 'malware'], yticklabels=['benign', 'malware'])
-    plt.xlabel('Predicted')
-    plt.ylabel('True')
-    plt.title('Confusion Matrix')
-    plt.savefig('confusion_matrix.png')
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    plt.title("Confusion Matrix")
+    plt.savefig("confusion_matrix.png")
 
-    print('Test set: Average loss: {:.4f}, Accuracy: {:.2f}%, Precision: {:.2f}%, Recall: {:.2f}%, F1: {:.2f}%'.format(
-        test_loss, accuracy * 100, precision * 100, recall * 100, f1 * 100))
+    print(
+        "Test set: Average loss: {:.4f}, Accuracy: {:.2f}%, Precision: {:.2f}%, Recall: {:.2f}%, F1: {:.2f}%".format(
+            test_loss, accuracy * 100, precision * 100, recall * 100, f1 * 100
+        )
+    )
 
     return accuracy, precision, recall, f1
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     parser: ArgumentParser = argparse.ArgumentParser()
     # parser.add_argument('-p', '--prepare', help='Prepare task', required=False)
-    parser.add_argument('-cpg', '--cpg', action='store_true', help='Specify to perform CPG generation task')
-    parser.add_argument('-embed', '--embed', action='store_true', help='Specify to perform Embedding generation task')
-    parser.add_argument('-mode', '--mode', default="train", help='Specify the mode (e.g., train, test)')
-    parser.add_argument('-path', '--path', default=None, help='Specify the path for the model')
+    parser.add_argument(
+        "-cpg",
+        "--cpg",
+        action="store_true",
+        help="Specify to perform CPG generation task",
+    )
+    parser.add_argument(
+        "-embed",
+        "--embed",
+        action="store_true",
+        help="Specify to perform Embedding generation task",
+    )
+    parser.add_argument(
+        "-mode", "--mode", default="train", help="Specify the mode (e.g., train, test)"
+    )
+    parser.add_argument(
+        "-path", "--path", default=None, help="Specify the path for the model"
+    )
 
     args = parser.parse_args()
 
@@ -193,8 +240,11 @@ if __name__ == '__main__':
     input_dataset = loads(PATHS.input)
     # split the dataset and pass to DataLoader with batch size
     train_loader, val_loader, test_loader = list(
-        map(lambda x: x.get_loader(context.batch_size, shuffle=context.shuffle),
-            train_val_test_split(input_dataset, shuffle=context.shuffle)))
+        map(
+            lambda x: x.get_loader(context.batch_size, shuffle=context.shuffle),
+            train_val_test_split(input_dataset, shuffle=context.shuffle),
+        )
+    )
 
     Bertggnn = configs.BertGGNN()
     gated_graph_conv_args = Bertggnn.model["gated_graph_conv_args"]
@@ -204,7 +254,11 @@ if __name__ == '__main__':
 
     if args.mode == "train":
         model = BertGGCN(gated_graph_conv_args, conv_args, emb_size, device).to("cuda")
-        optimizer = torch.optim.AdamW(model.parameters(), lr=Bertggnn.learning_rate, weight_decay=Bertggnn.weight_decay)
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=Bertggnn.learning_rate,
+            weight_decay=Bertggnn.weight_decay,
+        )
 
         best_acc = 0.0
         NUM_EPOCHS = context.epochs
@@ -220,5 +274,3 @@ if __name__ == '__main__':
     model_test = BertGGCN(gated_graph_conv_args, conv_args, emb_size, device).to("cuda")
     model_test.load_state_dict(torch.load(args.path))
     accuracy, precision, recall, f1 = test(model_test, DEVICE, test_loader)
-
-
