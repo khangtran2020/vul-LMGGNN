@@ -11,7 +11,7 @@ from transformers import RobertaTokenizer, RobertaModel
 class NodesEmbedding:
     def __init__(self, nodes_dim: int, w2v_keyed_vectors: Word2VecKeyedVectors = None):
         # self.w2v_keyed_vectors = w2v_keyed_vectors
-        # self.kv_size = w2v_keyed_vectors.vector_size
+        self.kv_size = 256  # w2v_keyed_vectors.vector_size
         self.tokenizer_bert = RobertaTokenizer.from_pretrained(
             "microsoft/codebert-base"
         )
