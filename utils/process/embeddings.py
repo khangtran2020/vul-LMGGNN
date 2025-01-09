@@ -7,12 +7,17 @@ from gensim.models.keyedvectors import Word2VecKeyedVectors
 from models.layers import encode_input
 from transformers import RobertaTokenizer, RobertaModel
 
+
 class NodesEmbedding:
-    def __init__(self, nodes_dim: int, w2v_keyed_vectors: Word2VecKeyedVectors):
-        self.w2v_keyed_vectors = w2v_keyed_vectors
-        self.kv_size = w2v_keyed_vectors.vector_size
-        self.tokenizer_bert = RobertaTokenizer.from_pretrained("microsoft/codebert-base")
-        self.bert_model = RobertaModel.from_pretrained("microsoft/codebert-base").to("cuda")
+    def __init__(self, nodes_dim: int, w2v_keyed_vectors: Word2VecKeyedVectors = None):
+        # self.w2v_keyed_vectors = w2v_keyed_vectors
+        # self.kv_size = w2v_keyed_vectors.vector_size
+        self.tokenizer_bert = RobertaTokenizer.from_pretrained(
+            "microsoft/codebert-base"
+        )
+        self.bert_model = RobertaModel.from_pretrained("microsoft/codebert-base").to(
+            "cuda"
+        )
         self.nodes_dim = nodes_dim
 
         assert self.nodes_dim >= 0
@@ -24,7 +29,7 @@ class NodesEmbedding:
         embedded_nodes = self.embed_nodes(nodes)
         nodes_tensor = torch.from_numpy(embedded_nodes).float()
 
-        self.target[:nodes_tensor.size(0), :] = nodes_tensor
+        self.target[: nodes_tensor.size(0), :] = nodes_tensor
 
         return self.target
 
@@ -36,11 +41,17 @@ class NodesEmbedding:
             # Get node's code
             node_code = node.get_code()
             tokenized_code = tokenizer(node_code, True)
-            input_ids, attention_mask = encode_input(tokenized_code, self.tokenizer_bert)
-            cls_feats = self.bert_model(input_ids.to("cuda"), attention_mask.to("cuda"))[0][:, 0]
+            input_ids, attention_mask = encode_input(
+                tokenized_code, self.tokenizer_bert
+            )
+            cls_feats = self.bert_model(
+                input_ids.to("cuda"), attention_mask.to("cuda")
+            )[0][:, 0]
             source_embedding = np.mean(cls_feats.cpu().detach().numpy(), 0)
             # The node representation is the concatenation of label and source embeddings
-            embedding = np.concatenate((np.array([node.type]), source_embedding), axis=0)
+            embedding = np.concatenate(
+                (np.array([node.type]), source_embedding), axis=0
+            )
             embeddings.append(embedding)
         # print(node.label, node.properties.properties.get("METHOD_FULL_NAME"))
 
@@ -49,20 +60,25 @@ class NodesEmbedding:
     # fromTokenToVectors
     # This is the original Word2Vec model usage.
     # Although we keep this part of the code, we are not using it.
-    def get_vectors(self, tokenized_code, node):
-        vectors = []
+    # def get_vectors(self, tokenized_code, node):
+    #     vectors = []
 
-        for token in tokenized_code:
-            if token in self.w2v_keyed_vectors.vocab:
-                vectors.append(self.w2v_keyed_vectors[token])
-            else:
-                # print(node.label, token, node.get_code(), tokenized_code)
-                vectors.append(np.zeros(self.kv_size))
-                if node.label not in ["Identifier", "Literal", "MethodParameterIn", "MethodParameterOut"]:
-                    msg = f"No vector for TOKEN {token} in {node.get_code()}."
-                    logger.log_warning('embeddings', msg)
+    #     for token in tokenized_code:
+    #         if token in self.w2v_keyed_vectors.vocab:
+    #             vectors.append(self.w2v_keyed_vectors[token])
+    #         else:
+    #             # print(node.label, token, node.get_code(), tokenized_code)
+    #             vectors.append(np.zeros(self.kv_size))
+    #             if node.label not in [
+    #                 "Identifier",
+    #                 "Literal",
+    #                 "MethodParameterIn",
+    #                 "MethodParameterOut",
+    #             ]:
+    #                 msg = f"No vector for TOKEN {token} in {node.get_code()}."
+    #                 logger.log_warning("embeddings", msg)
 
-        return vectors
+    #     return vectors
 
 
 class GraphsEmbedding:
@@ -98,7 +114,7 @@ class GraphsEmbedding:
         return coo
 
 
-def nodes_to_input(nodes, target, nodes_dim, keyed_vectors, edge_type):
+def nodes_to_input(nodes, target, nodes_dim, edge_type, keyed_vectors=None):
     nodes_embedding = NodesEmbedding(nodes_dim, keyed_vectors)
     graphs_embedding = GraphsEmbedding(edge_type)
     label = torch.tensor([target]).float()
